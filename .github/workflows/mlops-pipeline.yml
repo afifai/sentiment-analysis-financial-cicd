@@ -1,0 +1,81 @@
+name: MLOps Training Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: 
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  BUCKET: ${{ secrets.GCP_BUCKET_NAME }}
+
+jobs:
+  # Job 1: Linter & Code Quality
+  linting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install Linting tools
+        run: pip install flake8
+      - name: Run Lint
+        # Cek syntax error atau undefined names
+        run: |
+          flake8 src/train.py --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  # Job 2: Submit Training to Vertex AI
+  train-and-evaluate:
+    needs: linting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Diperlukan untuk post comment report
+      
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install google-cloud-aiplatform google-cloud-storage pandas scikit-learn
+
+      - name: Submit Training Job
+        # Script ini akan men-trigger Vertex AI job, menunggu selesai, dan register model
+        run: |
+          python src/submit_job.py \
+            --project_id $PROJECT_ID \
+            --bucket $BUCKET \
+            --branch ${{ github.ref_name }}
+
+      # --- LOGIC REPORTING (KHUSUS PR) ---
+      - name: Download Baseline Metrics (Only for PR)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          gsutil cp $BUCKET/prod_baseline/metrics.json prod_metrics.json || echo "No baseline found"
+
+      - name: Generate Report
+        if: github.event_name == 'pull_request'
+        run: python src/compare_metrics.py
+
+      - name: Post Comment to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: report.md
