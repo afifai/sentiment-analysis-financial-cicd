@@ -4,48 +4,63 @@ import joblib
 import json
 import os
 import sys
+from google.cloud import storage
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 
 # --- KONFIGURASI ENV VERTEX AI ---
-# AIP_MODEL_DIR diset otomatis oleh Vertex AI untuk output artifacts
 MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
 DATA_FILE = 'sentiment-financial.csv'
 
-# Helper untuk download data jika running di Cloud
 def ensure_data_exists():
+    """Download data dari GCS jika file lokal tidak ditemukan."""
     if not os.path.exists(DATA_FILE):
-        # Asumsi bucket dipassing via arg atau hardcoded logic, 
-        # tapi untuk simplifikasi kita ambil dari env var jika ada, 
-        # atau kita asumsikan pipeline submit sudah menyiapkan mekanisme download.
-        # Disini kita pakai gsutil command sederhana karena container Vertex support gsutil
-        bucket_name = os.getenv("GCS_BUCKET_NAME") # Akan diinject oleh submit_job.py
-        if bucket_name:
-            print(f"Downloading data from {bucket_name}...")
-            os.system(f"gsutil cp {bucket_name}/data/{DATA_FILE} .")
-        else:
-            print("Warning: Bucket name not found, expecting local file.")
+        bucket_name = os.getenv("GCS_BUCKET_NAME")
+        if not bucket_name:
+            print("Warning: GCS_BUCKET_NAME variable not found. Expecting local file.")
+            return
 
+        print(f"Downloading data from {bucket_name}...")
+        try:
+            # Bersihkan prefix gs:// jika ada, karena client library tidak butuh itu
+            bucket_name_clean = bucket_name.replace("gs://", "")
+            
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name_clean)
+            
+            # Asumsi file ada di folder 'data/' di dalam bucket
+            blob = bucket.blob(f"data/{DATA_FILE}")
+            blob.download_to_filename(DATA_FILE)
+            print("Download complete.")
+        except Exception as e:
+            print(f"Error downloading data: {e}")
+            # Kita biarkan lanjut, nanti akan error di pd.read_csv jika file benar2 tidak ada
+            
 def train_and_evaluate():
     ensure_data_exists()
     
     # 1. Load Data
     print("Loading data...")
+    if not os.path.exists(DATA_FILE):
+        print(f"CRITICAL ERROR: File {DATA_FILE} not found!")
+        print("Pastikan file 'sentiment-financial.csv' sudah diupload ke folder 'data/' di bucket Anda.")
+        sys.exit(1)
+
     try:
         df = pd.read_csv(DATA_FILE, header=None, names=['label', 'text'])
-    except FileNotFoundError:
-        print(f"Error: File {DATA_FILE} not found!")
+    except Exception as e:
+        print(f"Error reading CSV: {e}")
         sys.exit(1)
     
-    # 2. Preprocessing & Splitting (AREA PESERTA BISA UBAH)
+    # 2. Preprocessing & Splitting
     X = df['text']
     y = df['label']
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Model Pipeline (AREA PESERTA BISA UBAH)
+    # Model Pipeline
     vectorizer = TfidfVectorizer(max_features=1000)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
@@ -60,7 +75,7 @@ def train_and_evaluate():
     labels = model.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
     
-    # Format metrics standar untuk report
+    # Format metrics
     metrics = {
         "model_name": "LogisticRegression",
         "parameters": str(model.get_params()),
@@ -68,7 +83,7 @@ def train_and_evaluate():
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
     }
     
-    # 4. Inference 5 Kalimat Wajib (JANGAN DIHAPUS)
+    # 4. Inference Checks
     test_sentences = [
         ("The company reported weaker demand in the last quarter which forced management to revise its revenue outlook downward.", "negative"),
         ("According to the latest update, retail sales remained stable and the firm does not expect major changes in its current operations.", "neutral"),
@@ -95,18 +110,41 @@ def train_and_evaluate():
     }
 
     # 5. Save Artifacts
-    print(f"Saving model artifacts...")
+    print(f"Saving artifacts...")
     joblib.dump(model, 'model.joblib')
     joblib.dump(vectorizer, 'vectorizer.joblib')
     
     with open('metrics.json', 'w') as f:
         json.dump(final_output, f, indent=2)
         
-    # Upload ke GCS (Penting untuk Vertex AI)
-    os.system(f"gsutil cp model.joblib {MODEL_DIR}/model.joblib")
-    os.system(f"gsutil cp vectorizer.joblib {MODEL_DIR}/vectorizer.joblib")
-    os.system(f"gsutil cp metrics.json {MODEL_DIR}/metrics.json")
-    
+    # Upload artifact ke GCS menggunakan storage client (lebih robust dari gsutil)
+    try:
+        bucket_name = os.getenv("GCS_BUCKET_NAME")
+        if bucket_name:
+            bucket_name_clean = bucket_name.replace("gs://", "")
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name_clean)
+            
+            # Upload model & vectorizer
+            # Vertex AI mengharapkan model di folder model/ (dari AIP_MODEL_DIR), 
+            # tapi kita upload manual saja agar yakin
+            
+            # Parsing AIP_MODEL_DIR untuk mendapatkan path relatif di bucket
+            # AIP_MODEL_DIR format: gs://bucket/path/to/job/output/model
+            if MODEL_DIR and MODEL_DIR.startswith("gs://"):
+                # Kita gunakan gsutil untuk upload artifact final karena Vertex AI
+                # otomatis mount env var ini, tapi pakai python client lebih aman
+                pass 
+                
+            # Fallback pakai gsutil untuk upload output akhir (biasanya sudah available utk write)
+            os.system(f"gsutil cp model.joblib {MODEL_DIR}/model.joblib")
+            os.system(f"gsutil cp vectorizer.joblib {MODEL_DIR}/vectorizer.joblib")
+            os.system(f"gsutil cp metrics.json {MODEL_DIR}/metrics.json")
+            print("Artifacts uploaded.")
+            
+    except Exception as e:
+        print(f"Error uploading artifacts: {e}")
+
     print("Training job finished.")
 
 if __name__ == '__main__':

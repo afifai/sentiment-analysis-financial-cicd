@@ -23,10 +23,9 @@ def submit_custom_job(
         display_name=display_name,
         script_path=script_path,
         container_uri="us-docker.pkg.dev/vertex-ai/training/scikit-learn-cpu.0-23:latest",
-        requirements=["pandas", "scikit-learn", "numpy", "joblib"],
+        requirements=["pandas", "scikit-learn", "numpy", "joblib", "google-cloud-storage"],
         replica_count=1,
         machine_type="n1-standard-4",
-        # Pass bucket name ke env var container agar train.py bisa download data
         environment_variables={"GCS_BUCKET_NAME": bucket_name} 
     )
     
