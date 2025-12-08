@@ -20,11 +20,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11' # <--- UPDATE KE 3.11
       - name: Install Linting tools
         run: pip install flake8
       - name: Run Lint
-        # Cek syntax error atau undefined names
         run: |
           flake8 src/train.py --count --select=E9,F63,F7,F82 --show-source --statistics
 
@@ -34,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write # Diperlukan untuk post comment report
+      pull-requests: write 
       
     steps:
       - uses: actions/checkout@v3
@@ -50,25 +49,37 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11' # <--- UPDATE KE 3.11
 
       - name: Install Dependencies
-        run: pip install google-cloud-aiplatform google-cloud-storage pandas scikit-learn
+        # Menambahkan upgrade pip agar aman
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-cloud-aiplatform google-cloud-storage pandas scikit-learn
+
+      - name: Check Env Vars
+        # Debugging: Print masked value untuk memastikan secret terbaca
+        run: |
+          if [ -z "$BUCKET" ]; then
+            echo "Error: BUCKET environment variable is empty. Check your GitHub Secrets."
+            exit 1
+          fi
+          echo "Bucket is set."
 
       - name: Submit Training Job
-        # Script ini akan men-trigger Vertex AI job, menunggu selesai, dan register model
+        # Tambahkan tanda kutip "$..." agar argumen tidak error jika ada spasi/kosong
         run: |
           python src/submit_job.py \
-            --project_id $PROJECT_ID \
-            --bucket $BUCKET \
-            --branch ${{ github.ref_name }}
+            --project_id "$PROJECT_ID" \
+            --bucket "$BUCKET" \
+            --branch "${{ github.ref_name }}"
 
       # --- LOGIC REPORTING (KHUSUS PR) ---
       - name: Download Baseline Metrics (Only for PR)
         if: github.event_name == 'pull_request'
         continue-on-error: true
         run: |
-          gsutil cp $BUCKET/prod_baseline/metrics.json prod_metrics.json || echo "No baseline found"
+          gsutil cp "$BUCKET/prod_baseline/metrics.json" prod_metrics.json || echo "No baseline found"
 
       - name: Generate Report
         if: github.event_name == 'pull_request'
