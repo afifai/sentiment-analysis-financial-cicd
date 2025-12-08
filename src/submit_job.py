@@ -18,11 +18,19 @@ def submit_custom_job(
     is_prod = (branch_name == "main")
     display_name = f"train-{branch_name.replace('/', '-')}"
     
-    # UPDATE: Menggunakan container Scikit-learn yang lebih baru (Python 3.8+)
-    container_uri = "us-docker.pkg.dev/vertex-ai/training/scikit-learn-cpu.1-0:latest"
+    # --- FIXED: Menggunakan TensorFlow Container (Python 3.10) ---
+    # Kita "meminjam" container TF karena memiliki Python 3.10 yang modern & stabil
+    # Container Scikit-learn bawaan Vertex masih Python 3.7 (deprecated)
+    container_uri = "us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-14.py310:latest"
     
-    # UPDATE: Requirements diminimalkan agar tidak crash saat install ulang pandas/sklearn
-    requirements = ["google-cloud-storage"]
+    # --- FIXED: Install Library Manual ---
+    # Kita install scikit-learn versi 1.0.x agar cocok dengan serving container 1-0
+    requirements = [
+        "scikit-learn==1.0.2", 
+        "pandas", 
+        "joblib", 
+        "google-cloud-storage"
+    ]
     
     job = aiplatform.CustomJob.from_local_script(
         display_name=display_name,
@@ -35,7 +43,7 @@ def submit_custom_job(
     )
     
     print(f"Submitting Job: {display_name}")
-    print(f"Container: {container_uri}")
+    print(f"Training Image: {container_uri}")
     job.run(sync=True)
     
     # --- Retrieving Artifacts ---
@@ -43,7 +51,6 @@ def submit_custom_job(
     print(f"Job finished. Artifacts: {model_artifacts_dir}")
     
     storage_client = storage.Client(project=project_id)
-    # Bersihkan prefix gs:// untuk client library
     bucket_name_clean = bucket_name.replace("gs://", "")
     gcs_bucket = storage_client.bucket(bucket_name_clean)
     
@@ -60,7 +67,7 @@ def submit_custom_job(
     
     # --- Register Model ---
     print("Uploading model to Registry...")
-    # Container serving juga disamakan versinya
+    # Serving container yang valid untuk scikit-learn
     serving_image = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
     
     model = aiplatform.Model.upload(
