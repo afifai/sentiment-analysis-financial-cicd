@@ -10,7 +10,7 @@ def submit_custom_job(
     branch_name,
     script_path="src/train.py"
 ):
-    location = "us-central1" # Sesuaikan region
+    location = "us-central1"
     staging_bucket = bucket_name 
     
     aiplatform.init(project=project_id, location=location, staging_bucket=staging_bucket)
@@ -18,52 +18,62 @@ def submit_custom_job(
     is_prod = (branch_name == "main")
     display_name = f"train-{branch_name.replace('/', '-')}"
     
-    # 1. Submit Training Job
+    # UPDATE: Menggunakan container Scikit-learn yang lebih baru (Python 3.8+)
+    container_uri = "us-docker.pkg.dev/vertex-ai/training/scikit-learn-cpu.1-0:latest"
+    
+    # UPDATE: Requirements diminimalkan agar tidak crash saat install ulang pandas/sklearn
+    requirements = ["google-cloud-storage"]
+    
     job = aiplatform.CustomJob.from_local_script(
         display_name=display_name,
         script_path=script_path,
-        container_uri="us-docker.pkg.dev/vertex-ai/training/scikit-learn-cpu.0-23:latest",
-        requirements=["pandas", "scikit-learn", "numpy", "joblib", "google-cloud-storage"],
+        container_uri=container_uri,
+        requirements=requirements,
         replica_count=1,
         machine_type="n1-standard-4",
         environment_variables={"GCS_BUCKET_NAME": bucket_name} 
     )
     
     print(f"Submitting Job: {display_name}")
+    print(f"Container: {container_uri}")
     job.run(sync=True)
     
-    # 2. Retrieve Metrics Artifacts
+    # --- Retrieving Artifacts ---
     model_artifacts_dir = job.base_output_dir + "/model"
     print(f"Job finished. Artifacts: {model_artifacts_dir}")
     
     storage_client = storage.Client(project=project_id)
-    gcs_bucket = storage_client.bucket(bucket_name.replace("gs://", ""))
+    # Bersihkan prefix gs:// untuk client library
+    bucket_name_clean = bucket_name.replace("gs://", "")
+    gcs_bucket = storage_client.bucket(bucket_name_clean)
     
-    # Parse path GCS untuk metrics.json
-    # Format: .../model/metrics.json
-    blob_path = model_artifacts_dir.replace(f"{bucket_name}/", "") + "/metrics.json"
-    
+    # Download metrics.json
+    blob_path = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "") + "/metrics.json"
     blob = gcs_bucket.blob(blob_path)
+    
+    print(f"Downloading metrics from: {blob_path}")
     blob.download_to_filename("metrics.json")
     
     with open("metrics.json", "r") as f:
         data = json.load(f)
     metrics = data['metrics']
     
-    # 3. Upload & Register Model ke Vertex AI Registry
+    # --- Register Model ---
     print("Uploading model to Registry...")
+    # Container serving juga disamakan versinya
+    serving_image = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
+    
     model = aiplatform.Model.upload(
         display_name="financial-sentiment-model",
         artifact_uri=model_artifacts_dir,
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.0-23:latest",
+        serving_container_image_uri=serving_image,
         is_default_version=True
     )
     
-    # 4. Import Evaluation Metrics (Agar tab Evaluate muncul)
+    # --- Import Evaluation ---
     eval_metrics = {
         "accuracy": metrics['accuracy'],
     }
-    # Flatten F1 scores
     for k, v in metrics['f1_scores'].items():
         eval_metrics[f"f1_score_{k}"] = v
 
@@ -76,7 +86,6 @@ def submit_custom_job(
     
     print(f"Model {model.resource_name} updated.")
 
-    # 5. Update Production Baseline (Jika Main)
     if is_prod:
         baseline_blob = gcs_bucket.blob("prod_baseline/metrics.json")
         baseline_blob.upload_from_filename("metrics.json")
