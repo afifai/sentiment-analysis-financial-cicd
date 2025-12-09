@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.ensemble import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import GridSearchCV
 
 # Import Google Cloud Storage
 try:
@@ -127,19 +128,26 @@ def train_and_evaluate():
     X_test_vec = vectorizer.transform(X_test)
     
    
-    model = LogisticRegression(
-        max_iter=1000, 
-        C=0.1,                          # Kekuatan Regularisasi
-        solver='lbfgs',
-        class_weight='balanced'         # Penyeimbangan Bobot Kelas
-    )
+    param_grid = {
+    'C': [0.01, 0.1, 1, 10],            # Kekuatan Regularisasi
+    'penalty': ['l1', 'l2'],            # Tipe Regularisasi
+    'solver': ['liblinear', 'saga'],    # Algoritma Optimasi
+    'max_iter': [100, 500]              # Iterasi Maksimum
+    }
 
-    model.fit(X_train_vec, y_train)
+    grid_search = GridSearchCV(
+    estimator=model, 
+    param_grid=param_grid, 
+    cv=5, 
+    scoring='accuracy', # Ganti dengan metric yang sesuai (misalnya 'f1_weighted')
+    verbose=1, 
+    n_jobs=-1 # Menggunakan semua core CPU
+    )
     
     # 4. Evaluasi
-    y_pred = model.predict(X_test_vec)
+    y_pred = grid_search.predict(X_test_vec)
     acc = accuracy_score(y_test, y_pred)
-    labels = model.classes_
+    labels = grid_search.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
     
     metrics = {
