@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn import linear_model
 
 # Import Google Cloud Storage
 try:
@@ -126,8 +127,10 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    #model = LogisticRegression()
+    model = linear_model.Lasso(alpha=0.1)
     model.fit(X_train_vec, y_train)
+    
     
     # 4. Evaluasi
     y_pred = model.predict(X_test_vec)
