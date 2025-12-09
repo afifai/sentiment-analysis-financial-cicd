@@ -193,8 +193,9 @@ def train_and_evaluate():
     inference_results = []
     print("\nRunning Inference Checks...")
     for text, expected in test_sentences:
-        vec_text = vectorizer.transform([text])
-        pred = model.predict(vec_text)[0]
+        # vec_text = vectorizer.transform([text])
+        pred = model.predict(text)[0]
+        # pred = model.predict(vec_text)[0]
         inference_results.append({
             "text": text,
             "expected": expected,
@@ -210,7 +211,7 @@ def train_and_evaluate():
     # 6. Save Artifacts Local
     print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
-    joblib.dump(vectorizer, 'vectorizer.joblib')
+    # joblib.dump(vectorizer, 'vectorizer.joblib')
     with open('metrics.json', 'w') as f:
         json.dump(final_output, f, indent=2)
         
