@@ -9,7 +9,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.svm import LinearSVC
 from sklearn.naive_bayes import MultinomialNB
@@ -130,7 +129,7 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = GradientBoostingClassifier()
+    model = LinearSVC()
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
@@ -140,7 +139,7 @@ def train_and_evaluate():
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
 
     metrics = {
-        "model_name": "GradientBoostingClassifier",
+        "model_name": "LinearSVC",
         "parameters": str(model.get_params()),
         "accuracy": acc,
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
