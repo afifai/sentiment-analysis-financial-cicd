@@ -1,6 +1,7 @@
 import os
 import json
 import argparse
+import sys
 from datetime import datetime
 from google.cloud import aiplatform
 from google.cloud import storage
@@ -24,7 +25,6 @@ def submit_custom_job(
     if branch_name == "main":
         identifier = "selected-jobs"
     else:
-        # Bersihkan nama branch agar valid untuk GCS path & Job ID
         if "/" in branch_name:
             identifier = branch_name.split("/")[-1]
         else:
@@ -35,9 +35,11 @@ def submit_custom_job(
     job_id_unique = f"{identifier}-{timestamp}"
     display_name = f"train-{job_id_unique}"
     
-    # --- FIXED: Tentukan Output Dir secara Eksplisit ---
-    # Kita set path ini agar kita tahu pasti dimana artifact disimpan
-    # Format: gs://nama-bucket/job-id
+    # --- OUTPUT DIR SETUP ---
+    # Hilangkan trailing slash jika ada
+    if bucket_name.endswith("/"):
+        bucket_name = bucket_name[:-1]
+        
     JOB_OUTPUT_DIR = f"{bucket_name}/{display_name}"
     
     # --- CONTAINER SETUP ---
@@ -61,7 +63,6 @@ def submit_custom_job(
         requirements=requirements,
         replica_count=1,
         machine_type="n1-standard-4",
-        # FIXED: Pass parameter base_output_dir disini
         base_output_dir=JOB_OUTPUT_DIR,
         environment_variables={"GCS_BUCKET_NAME": bucket_name} 
     )
@@ -69,26 +70,42 @@ def submit_custom_job(
     job.run(sync=True)
     
     # --- Retrieving Artifacts ---
-    # Vertex AI otomatis menambahkan folder /model di belakang base_output_dir
+    # Vertex AI otomatis membuat folder 'model' di dalam output dir
     model_artifacts_dir = JOB_OUTPUT_DIR + "/model"
-    print(f"✅ Job finished. Artifacts location: {model_artifacts_dir}")
+    print(f"✅ Job finished. Expected Artifacts: {model_artifacts_dir}")
     
     storage_client = storage.Client(project=project_id)
     bucket_name_clean = bucket_name.replace("gs://", "")
     gcs_bucket = storage_client.bucket(bucket_name_clean)
     
-    # Download metrics.json
-    # Parse path GCS: gs://bucket/folder/model/metrics.json -> folder/model/metrics.json
-    blob_path = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "") + "/metrics.json"
+    # Logic Path metrics.json
+    # Contoh: gs://bucket/train-id/model/metrics.json
+    # Blob path: train-id/model/metrics.json
+    
+    # Hapus awalan bucket dari path artifact
+    blob_prefix = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "")
+    # Pastikan tidak ada double slash
+    if blob_prefix.startswith("/"):
+        blob_prefix = blob_prefix[1:]
+        
+    blob_path = f"{blob_prefix}/metrics.json"
+    
+    print(f"🔎 Looking for file in Bucket: {bucket_name_clean}")
+    print(f"🔎 Full Blob Path: {blob_path}")
+    
     blob = gcs_bucket.blob(blob_path)
     
-    print(f"📥 Downloading metrics from: {blob_path}")
-    try:
-        blob.download_to_filename("metrics.json")
-    except Exception as e:
-        print(f"❌ Error downloading metrics: {e}")
-        print("Pastikan training script berhasil menyimpan metrics.json dan menguploadnya.")
-        return
+    if not blob.exists():
+        print("❌ CRITICAL: metrics.json NOT FOUND in GCS!")
+        print("Possible causes:")
+        print("1. Training script failed before saving metrics.")
+        print("2. Upload logic in train.py failed.")
+        print("3. Path mismatch.")
+        sys.exit(1) # Paksa Fail disini agar tidak lanjut ke compare_metrics
+    
+    print(f"📥 Downloading metrics...")
+    blob.download_to_filename("metrics.json")
+    print("✅ Download success.")
     
     with open("metrics.json", "r") as f:
         data = json.load(f)
