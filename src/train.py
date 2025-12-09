@@ -10,21 +10,65 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 
-# Try import native storage client
+# Import Google Cloud Storage
 try:
     from google.cloud import storage
     HAS_STORAGE_LIB = True
 except ImportError:
     HAS_STORAGE_LIB = False
+    print("Warning: google-cloud-storage library not found.")
 
 # --- KONFIGURASI ENV VERTEX AI ---
+# Vertex AI otomatis set AIP_MODEL_DIR ke gs://bucket/output_dir/model
 MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
 DATA_FILE = 'sentiment-financial.csv'
+
+def get_bucket_and_blob_name(gs_path):
+    """Helper untuk memecah path gs://bucket/folder/file"""
+    if not gs_path.startswith("gs://"):
+        return None, None
+    parts = gs_path.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    blob_name = parts[1] if len(parts) > 1 else ""
+    return bucket_name, blob_name
+
+def upload_to_gcs(local_path, gs_path):
+    """Upload file ke GCS menggunakan Storage Client (Lebih stabil dari gsutil)"""
+    print(f"Uploading {local_path} to {gs_path}...")
+    
+    bucket_name, blob_name_prefix = get_bucket_and_blob_name(gs_path)
+    
+    if not bucket_name:
+        print(f"Error: Invalid GCS path {gs_path}")
+        return False
+
+    # Jika gs_path adalah folder (diakhiri / atau tidak ada ekstensi), tambahkan nama file lokal
+    if blob_name_prefix and not blob_name_prefix.endswith(os.path.basename(local_path)):
+         # Pastikan formatnya folder/filename.ext
+         if blob_name_prefix.endswith("/"):
+             blob_name = blob_name_prefix + os.path.basename(local_path)
+         else:
+             blob_name = blob_name_prefix + "/" + os.path.basename(local_path)
+    else:
+        blob_name = blob_name_prefix
+
+    # Clean double slashes just in case
+    blob_name = blob_name.replace("//", "/")
+
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(local_path)
+        print(f"✅ Successfully uploaded to gs://{bucket_name}/{blob_name}")
+        return True
+    except Exception as e:
+        print(f"❌ Upload failed using Python Client: {e}")
+        return False
 
 def download_from_gcs_robust(bucket_url, source_path, dest_path):
     print(f"Attempting to download {source_path} from {bucket_url}...")
     
-    # Method 1: Python Library
     if HAS_STORAGE_LIB:
         try:
             print("Method 1: Using google-cloud-storage library...")
@@ -38,7 +82,7 @@ def download_from_gcs_robust(bucket_url, source_path, dest_path):
         except Exception as e:
             print(f"Method 1 failed: {e}")
     
-    # Method 2: gsutil CLI
+    # Method 2: gsutil CLI Fallback
     print("Method 2: Using gsutil CLI...")
     try:
         full_source_uri = f"{bucket_url}/{source_path}"
@@ -51,15 +95,13 @@ def download_from_gcs_robust(bucket_url, source_path, dest_path):
         return False
 
 def train_and_evaluate():
-    # 1. Download Data Logic
+    # 1. Download Data
     bucket_name = os.getenv("GCS_BUCKET_NAME")
     if bucket_name:
         success = download_from_gcs_robust(bucket_name, f"data/{DATA_FILE}", DATA_FILE)
         if not success:
-            print("Warning: Failed to download data from GCS. Checking local file...")
-    else:
-        print("Warning: GCS_BUCKET_NAME not set. Using local file if exists.")
-
+            print("Warning: Failed to download data from GCS.")
+            
     # 2. Load Data
     print("Loading data...")
     if not os.path.exists(DATA_FILE):
@@ -67,7 +109,6 @@ def train_and_evaluate():
         sys.exit(1)
 
     try:
-        # FIXED: Menambahkan encoding='latin-1' untuk handle karakter spesial
         df = pd.read_csv(DATA_FILE, header=None, names=['label', 'text'], encoding='latin-1')
         print(f"Data loaded. Shape: {df.shape}")
     except Exception as e:
@@ -127,22 +168,24 @@ def train_and_evaluate():
         "inference": inference_results
     }
 
-    # 6. Save Artifacts
-    print(f"Saving artifacts...")
+    # 6. Save Artifacts Local
+    print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
     joblib.dump(vectorizer, 'vectorizer.joblib')
-    
     with open('metrics.json', 'w') as f:
         json.dump(final_output, f, indent=2)
         
-    # Upload Artifacts
-    print("Uploading artifacts to GCS...")
-    try:
-        os.system(f"gsutil cp model.joblib {MODEL_DIR}/model.joblib")
-        os.system(f"gsutil cp vectorizer.joblib {MODEL_DIR}/vectorizer.joblib")
-        os.system(f"gsutil cp metrics.json {MODEL_DIR}/metrics.json")
-    except Exception as e:
-        print(f"Error uploading artifacts: {e}")
+    # 7. Upload to GCS (CRITICAL STEP)
+    print(f"Uploading artifacts to MODEL_DIR: {MODEL_DIR}")
+    
+    if MODEL_DIR and MODEL_DIR.startswith("gs://"):
+        # Upload menggunakan Python Client (Preferred)
+        upload_to_gcs('model.joblib', MODEL_DIR)
+        upload_to_gcs('vectorizer.joblib', MODEL_DIR)
+        upload_to_gcs('metrics.json', MODEL_DIR)
+    else:
+        # Fallback local copy (jarang terjadi di Vertex)
+        print(f"MODEL_DIR is local or empty: {MODEL_DIR}. Skipping GCS upload.")
     
     print("Training job finished successfully.")
 
