@@ -124,11 +124,8 @@ def train_and_evaluate():
     
     # Model Pipeline
 vectorizer = TfidfVectorizer(
-    max_features=5000,
-    ngram_range=(1, 2),
-    sublinear_tf=True,
-    min_df=2,
-    stop_words=None
+    max_features=8000,
+    ngram_range=(1, 2)
 )
 
 
