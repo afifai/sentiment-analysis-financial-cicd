@@ -18,7 +18,7 @@ except ImportError:
     HAS_STORAGE_LIB = False
     print("Warning: google-cloud-storage library not found.")
 
-# --- KONFIGURASI ENV VERTEX AI ---
+# --- KONFIGURASI ENV VERTEX AI -
 # Vertex AI otomatis set AIP_MODEL_DIR ke gs://bucket/output_dir/model
 MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
 DATA_FILE = 'sentiment-financial.csv'
