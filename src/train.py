@@ -10,8 +10,10 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.svm import LinearSVC
+from sklearn.naive_bayes import MultinomialNB
 
-# Import Google Cloud Storage
+# Import Google Cloud Storage (GCS)
 try:
     from google.cloud import storage
     HAS_STORAGE_LIB = True
@@ -132,16 +134,18 @@ def train_and_evaluate():
     
     # 4. Evaluasi
     y_pred = model.predict(X_test_vec)
+
     acc = accuracy_score(y_test, y_pred)
-    labels = model.classes_
+    labels = best_model.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
-    
+
     metrics = {
-        "model_name": "LogisticRegression",
-        "parameters": str(model.get_params()),
+        "model_name": best_model_name,
+        "parameters": str(best_model.get_params()),
         "accuracy": acc,
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
     }
+
     
     # 5. Inference Checks
     test_sentences = [
@@ -156,7 +160,8 @@ def train_and_evaluate():
     print("\nRunning Inference Checks...")
     for text, expected in test_sentences:
         vec_text = vectorizer.transform([text])
-        pred = model.predict(vec_text)[0]
+        pred = best_model.predict(vec_text)[0]
+
         inference_results.append({
             "text": text,
             "expected": expected,
@@ -170,6 +175,7 @@ def train_and_evaluate():
     }
 
     # 6. Save Artifacts Local
+    model = best_model
     print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
     joblib.dump(vectorizer, 'vectorizer.joblib')
