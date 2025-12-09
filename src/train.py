@@ -126,9 +126,7 @@ def train_and_evaluate():
 def train_and_evaluate():
     ...
     # Model Pipeline
-    vectorizer = TfidfVectorizer(
-        max_features=8000
-    )
+    vectorizer = TfidfVectorizer(max_features=8000)
 
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
