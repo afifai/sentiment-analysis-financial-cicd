@@ -133,7 +133,7 @@ def train_and_evaluate():
     X_test_vec = vectorizer.transform(X_test)
     
     # model = MLPClassifier(random_state=1, max_iter=300).fit(X_train_vec, y_train)
-    model = make_pipeline(StandardScaler(),
+    model = make_pipeline(StandardScaler(with_mean=False),
                     LinearSVC(random_state=0, tol=1e-5))
     model.fit(X_train_vec, y_train)
     # model.predict_proba(X_test[:1])
