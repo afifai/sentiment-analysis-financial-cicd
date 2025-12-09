@@ -18,18 +18,16 @@ def submit_custom_job(
     is_prod = (branch_name == "main")
     display_name = f"train-{branch_name.replace('/', '-')}"
     
-    # --- FIXED: Menggunakan TensorFlow Container (Python 3.10) ---
-    # Kita "meminjam" container TF karena memiliki Python 3.10 yang modern & stabil
-    # Container Scikit-learn bawaan Vertex masih Python 3.7 (deprecated)
+    # Menggunakan container TensorFlow (Python 3.10) sebagai base image
     container_uri = "us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-14.py310:latest"
     
-    # --- FIXED: Install Library Manual ---
-    # Kita install scikit-learn versi 1.0.x agar cocok dengan serving container 1-0
+    # FIXED: Menambahkan 'python-json-logger' untuk memperbaiki error internal Vertex AI
     requirements = [
         "scikit-learn==1.0.2", 
         "pandas", 
         "joblib", 
-        "google-cloud-storage"
+        "google-cloud-storage",
+        "python-json-logger" 
     ]
     
     job = aiplatform.CustomJob.from_local_script(
@@ -43,7 +41,7 @@ def submit_custom_job(
     )
     
     print(f"Submitting Job: {display_name}")
-    print(f"Training Image: {container_uri}")
+    print(f"Base Image: {container_uri}")
     job.run(sync=True)
     
     # --- Retrieving Artifacts ---
@@ -67,7 +65,7 @@ def submit_custom_job(
     
     # --- Register Model ---
     print("Uploading model to Registry...")
-    # Serving container yang valid untuk scikit-learn
+    # Serving container harus sesuai dengan versi scikit-learn yang kita install (1.0.2)
     serving_image = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
     
     model = aiplatform.Model.upload(
