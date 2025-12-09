@@ -10,6 +10,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import GridSearchCV
 
 # Import Google Cloud Storage
 try:
@@ -126,14 +127,22 @@ def train_and_evaluate():
     vectorizer = CountVectorizer(max_features=1000)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
-    
-    model = RandomForestClassifier()
-    model.fit(X_train_vec, y_train)
-    
+
+    grid_search = GridSearchCV(
+    estimator=model, 
+    param_grid=param_grid, 
+    cv=5, 
+    scoring='accuracy', # Ganti dengan metric yang sesuai (misalnya 'f1_weighted')
+    verbose=1, 
+    n_jobs=-1 # Menggunakan semua core CPU
+    )
+
+    grid_search.fit(X_train_vec, y_train)
+
     # 4. Evaluasi
-    y_pred = model.predict(X_test_vec)
+    y_pred = grid_search.predict(X_test_vec)
     acc = accuracy_score(y_test, y_pred)
-    labels = model.classes_
+    labels = grid_search.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
     
     metrics = {
