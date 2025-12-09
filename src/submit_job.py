@@ -22,22 +22,23 @@ def submit_custom_job(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
     if branch_name == "main":
-        # Jika main, kasih nama spesial
         identifier = "selected-jobs"
     else:
-        # Jika features/kelompok-1 -> ambil 'kelompok-1'
-        # Jika feat/kelompok-1 -> ambil 'kelompok-1'
-        # Jika kelompok-1 (tanpa slash) -> ambil 'kelompok-1'
+        # Bersihkan nama branch agar valid untuk GCS path & Job ID
         if "/" in branch_name:
             identifier = branch_name.split("/")[-1]
         else:
             identifier = branch_name
     
-    # Bersihkan identifier dari karakter aneh agar aman buat nama job
     identifier = identifier.replace("_", "-").lower()
     
     job_id_unique = f"{identifier}-{timestamp}"
     display_name = f"train-{job_id_unique}"
+    
+    # --- FIXED: Tentukan Output Dir secara Eksplisit ---
+    # Kita set path ini agar kita tahu pasti dimana artifact disimpan
+    # Format: gs://nama-bucket/job-id
+    JOB_OUTPUT_DIR = f"{bucket_name}/{display_name}"
     
     # --- CONTAINER SETUP ---
     container_uri = "us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-14.py310:latest"
@@ -51,7 +52,7 @@ def submit_custom_job(
     ]
     
     print(f"🚀 Submitting Job: {display_name}")
-    print(f"📦 Container: {container_uri}")
+    print(f"📂 Output Dir: {JOB_OUTPUT_DIR}")
     
     job = aiplatform.CustomJob.from_local_script(
         display_name=display_name,
@@ -60,20 +61,24 @@ def submit_custom_job(
         requirements=requirements,
         replica_count=1,
         machine_type="n1-standard-4",
+        # FIXED: Pass parameter base_output_dir disini
+        base_output_dir=JOB_OUTPUT_DIR,
         environment_variables={"GCS_BUCKET_NAME": bucket_name} 
     )
     
     job.run(sync=True)
     
     # --- Retrieving Artifacts ---
-    model_artifacts_dir = job.base_output_dir + "/model"
-    print(f"✅ Job finished. Artifacts: {model_artifacts_dir}")
+    # Vertex AI otomatis menambahkan folder /model di belakang base_output_dir
+    model_artifacts_dir = JOB_OUTPUT_DIR + "/model"
+    print(f"✅ Job finished. Artifacts location: {model_artifacts_dir}")
     
     storage_client = storage.Client(project=project_id)
     bucket_name_clean = bucket_name.replace("gs://", "")
     gcs_bucket = storage_client.bucket(bucket_name_clean)
     
     # Download metrics.json
+    # Parse path GCS: gs://bucket/folder/model/metrics.json -> folder/model/metrics.json
     blob_path = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "") + "/metrics.json"
     blob = gcs_bucket.blob(blob_path)
     
@@ -82,6 +87,7 @@ def submit_custom_job(
         blob.download_to_filename("metrics.json")
     except Exception as e:
         print(f"❌ Error downloading metrics: {e}")
+        print("Pastikan training script berhasil menyimpan metrics.json dan menguploadnya.")
         return
     
     with open("metrics.json", "r") as f:
@@ -94,7 +100,7 @@ def submit_custom_job(
     serving_image = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
     
     model = aiplatform.Model.upload(
-        display_name=f"model-{identifier}", # Nama model di registry ikut nama identifier
+        display_name=f"model-{identifier}", 
         artifact_uri=model_artifacts_dir,
         serving_container_image_uri=serving_image,
         is_default_version=True,
