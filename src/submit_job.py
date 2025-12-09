@@ -1,9 +1,12 @@
 import os
 import json
 import argparse
+import sys
 from datetime import datetime
 from google.cloud import aiplatform
 from google.cloud import storage
+# Import client level rendah untuk Import Evaluation
+from google.cloud import aiplatform_v1
 
 def submit_custom_job(
     project_id, 
@@ -14,6 +17,7 @@ def submit_custom_job(
     location = "us-central1"
     staging_bucket = bucket_name 
     
+    # Init SDK High Level
     aiplatform.init(project=project_id, location=location, staging_bucket=staging_bucket)
     
     is_prod = (branch_name == "main")
@@ -24,7 +28,6 @@ def submit_custom_job(
     if branch_name == "main":
         identifier = "selected-jobs"
     else:
-        # Bersihkan nama branch agar valid untuk GCS path & Job ID
         if "/" in branch_name:
             identifier = branch_name.split("/")[-1]
         else:
@@ -35,9 +38,10 @@ def submit_custom_job(
     job_id_unique = f"{identifier}-{timestamp}"
     display_name = f"train-{job_id_unique}"
     
-    # --- FIXED: Tentukan Output Dir secara Eksplisit ---
-    # Kita set path ini agar kita tahu pasti dimana artifact disimpan
-    # Format: gs://nama-bucket/job-id
+    # --- OUTPUT DIR SETUP ---
+    if bucket_name.endswith("/"):
+        bucket_name = bucket_name[:-1]
+        
     JOB_OUTPUT_DIR = f"{bucket_name}/{display_name}"
     
     # --- CONTAINER SETUP ---
@@ -61,7 +65,6 @@ def submit_custom_job(
         requirements=requirements,
         replica_count=1,
         machine_type="n1-standard-4",
-        # FIXED: Pass parameter base_output_dir disini
         base_output_dir=JOB_OUTPUT_DIR,
         environment_variables={"GCS_BUCKET_NAME": bucket_name} 
     )
@@ -69,26 +72,33 @@ def submit_custom_job(
     job.run(sync=True)
     
     # --- Retrieving Artifacts ---
-    # Vertex AI otomatis menambahkan folder /model di belakang base_output_dir
     model_artifacts_dir = JOB_OUTPUT_DIR + "/model"
-    print(f"✅ Job finished. Artifacts location: {model_artifacts_dir}")
+    print(f"✅ Job finished. Expected Artifacts: {model_artifacts_dir}")
     
     storage_client = storage.Client(project=project_id)
     bucket_name_clean = bucket_name.replace("gs://", "")
     gcs_bucket = storage_client.bucket(bucket_name_clean)
     
-    # Download metrics.json
-    # Parse path GCS: gs://bucket/folder/model/metrics.json -> folder/model/metrics.json
-    blob_path = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "") + "/metrics.json"
+    # Logic Path metrics.json
+    blob_prefix = model_artifacts_dir.replace(f"gs://{bucket_name_clean}/", "")
+    if blob_prefix.startswith("/"):
+        blob_prefix = blob_prefix[1:]
+        
+    blob_path = f"{blob_prefix}/metrics.json"
+    
+    print(f"🔎 Looking for file in Bucket: {bucket_name_clean}")
+    print(f"🔎 Full Blob Path: {blob_path}")
+    
     blob = gcs_bucket.blob(blob_path)
     
-    print(f"📥 Downloading metrics from: {blob_path}")
-    try:
-        blob.download_to_filename("metrics.json")
-    except Exception as e:
-        print(f"❌ Error downloading metrics: {e}")
-        print("Pastikan training script berhasil menyimpan metrics.json dan menguploadnya.")
-        return
+    if not blob.exists():
+        print("❌ CRITICAL: metrics.json NOT FOUND in GCS!")
+        print("Please check previous logs if 'src/train.py' uploaded it successfully.")
+        sys.exit(1)
+    
+    print(f"📥 Downloading metrics...")
+    blob.download_to_filename("metrics.json")
+    print("✅ Download success.")
     
     with open("metrics.json", "r") as f:
         data = json.load(f)
@@ -107,22 +117,43 @@ def submit_custom_job(
         labels={"source": "github-actions", "branch": identifier}
     )
     
-    # --- Import Evaluation ---
-    eval_metrics = {
-        "accuracy": metrics['accuracy'],
-    }
-    for k, v in metrics['f1_scores'].items():
-        eval_metrics[f"f1_score_{k}"] = v
-
+    # --- Import Evaluation (FIXED VERSION) ---
     print("📊 Importing Evaluation metrics...")
-    model.import_evaluation(
-        display_name=f"eval-{job_id_unique}",
-        metrics=eval_metrics,
-        pipeline_job_id=job.name
-    )
     
-    print(f"✅ Model Resource Name: {model.resource_name}")
-
+    try:
+        # Prepare metrics dictionary
+        eval_metrics = {
+            "accuracy": metrics['accuracy'],
+        }
+        for k, v in metrics['f1_scores'].items():
+            eval_metrics[f"f1_score_{k}"] = v
+            
+        # Gunakan Client API v1 (GAPIC)
+        # Kita tidak pakai metrics_schema_uri agar bisa menerima custom keys
+        api_endpoint = f"{location}-aiplatform.googleapis.com"
+        client_options = {"api_endpoint": api_endpoint}
+        client = aiplatform_v1.ModelServiceClient(client_options=client_options)
+        
+        model_eval_payload = {
+            "display_name": f"eval-{job_id_unique}",
+            "metrics": eval_metrics,
+            "metadata": {
+                "pipeline_job_resource_name": job.resource_name
+            }
+        }
+        
+        request = aiplatform_v1.ImportModelEvaluationRequest(
+            parent=model.resource_name,
+            model_evaluation=model_eval_payload
+        )
+        
+        client.import_model_evaluation(request=request)
+        print(f"✅ Evaluation imported successfully to {model.resource_name}")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to import evaluation metrics (non-fatal): {e}")
+        # Kita lanjut saja agar pipeline tidak merah total hanya gara-gara metrics display
+        
     if is_prod:
         baseline_blob = gcs_bucket.blob("prod_baseline/metrics.json")
         baseline_blob.upload_from_filename("metrics.json")
