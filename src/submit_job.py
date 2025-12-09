@@ -1,7 +1,6 @@
 import os
 import json
 import argparse
-import time
 from datetime import datetime
 from google.cloud import aiplatform
 from google.cloud import storage
@@ -19,27 +18,30 @@ def submit_custom_job(
     
     is_prod = (branch_name == "main")
     
-    # --- LOGIC PENAMAAN UNIK (Group + Timestamp) ---
-    # Format: train-[branch]-[timestamp]
-    # Contoh: train-main-20251209-103000
+    # --- LOGIC PENAMAAN OTOMATIS ---
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    clean_branch = branch_name.replace("/", "-")
     
-    # Jika ingin hardcode nama kelompok, ubah string ini. 
-    # Atau ambil dari branch name feature/kelompok-1
-    group_label = "batch7" 
+    if branch_name == "main":
+        # Jika main, kasih nama spesial
+        identifier = "selected-jobs"
+    else:
+        # Jika features/kelompok-1 -> ambil 'kelompok-1'
+        # Jika feat/kelompok-1 -> ambil 'kelompok-1'
+        # Jika kelompok-1 (tanpa slash) -> ambil 'kelompok-1'
+        if "/" in branch_name:
+            identifier = branch_name.split("/")[-1]
+        else:
+            identifier = branch_name
     
-    job_id_unique = f"{group_label}-{clean_branch}-{timestamp}"
+    # Bersihkan identifier dari karakter aneh agar aman buat nama job
+    identifier = identifier.replace("_", "-").lower()
+    
+    job_id_unique = f"{identifier}-{timestamp}"
     display_name = f"train-{job_id_unique}"
     
     # --- CONTAINER SETUP ---
-    # Training Container: Menggunakan TF 2.14 (Python 3.10)
     container_uri = "us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-14.py310:latest"
     
-    # --- REQUIREMENTS FIX ---
-    # 1. python-json-logger: Wajib ada untuk logging Vertex AI
-    # 2. scikit-learn: JANGAN di-pin ke 1.0.2 karena conflict dengan 'bigframes'. 
-    #    Kita biarkan dia install versi terbaru (biasanya 1.3+)
     requirements = [
         "scikit-learn", 
         "pandas", 
@@ -80,7 +82,6 @@ def submit_custom_job(
         blob.download_to_filename("metrics.json")
     except Exception as e:
         print(f"❌ Error downloading metrics: {e}")
-        # Bisa jadi training gagal tapi job success, atau file tidak tersave
         return
     
     with open("metrics.json", "r") as f:
@@ -90,16 +91,14 @@ def submit_custom_job(
     # --- Register Model ---
     print("📤 Uploading model to Registry...")
     
-    # FIXED: Serving Image di-upgrade ke 1-3 agar kompatibel dengan Scikit-learn baru
-    # Versi 1-0 terlalu tua untuk model yang ditrain dengan library terbaru
     serving_image = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
     
     model = aiplatform.Model.upload(
-        display_name=f"model-{clean_branch}", # Nama model di registry juga dibuat spesifik branch
+        display_name=f"model-{identifier}", # Nama model di registry ikut nama identifier
         artifact_uri=model_artifacts_dir,
         serving_container_image_uri=serving_image,
         is_default_version=True,
-        labels={"source": "github-actions", "group": group_label}
+        labels={"source": "github-actions", "branch": identifier}
     )
     
     # --- Import Evaluation ---

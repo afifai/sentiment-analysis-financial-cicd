@@ -22,9 +22,6 @@ MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
 DATA_FILE = 'sentiment-financial.csv'
 
 def download_from_gcs_robust(bucket_url, source_path, dest_path):
-    """
-    Download file from GCS using Client Lib first, then fallback to gsutil CLI.
-    """
     print(f"Attempting to download {source_path} from {bucket_url}...")
     
     # Method 1: Python Library
@@ -57,7 +54,6 @@ def train_and_evaluate():
     # 1. Download Data Logic
     bucket_name = os.getenv("GCS_BUCKET_NAME")
     if bucket_name:
-        # Asumsi data disimpan di folder /data/ di bucket
         success = download_from_gcs_robust(bucket_name, f"data/{DATA_FILE}", DATA_FILE)
         if not success:
             print("Warning: Failed to download data from GCS. Checking local file...")
@@ -71,7 +67,8 @@ def train_and_evaluate():
         sys.exit(1)
 
     try:
-        df = pd.read_csv(DATA_FILE, header=None, names=['label', 'text'])
+        # FIXED: Menambahkan encoding='latin-1' untuk handle karakter spesial
+        df = pd.read_csv(DATA_FILE, header=None, names=['label', 'text'], encoding='latin-1')
         print(f"Data loaded. Shape: {df.shape}")
     except Exception as e:
         print(f"Error reading CSV: {e}")
@@ -138,10 +135,9 @@ def train_and_evaluate():
     with open('metrics.json', 'w') as f:
         json.dump(final_output, f, indent=2)
         
-    # Upload Artifacts (Fallback Logic)
+    # Upload Artifacts
     print("Uploading artifacts to GCS...")
     try:
-        # Upload manual karena Vertex AI kadang tidak otomatis sync output directory jika ada error di script wrapper
         os.system(f"gsutil cp model.joblib {MODEL_DIR}/model.joblib")
         os.system(f"gsutil cp vectorizer.joblib {MODEL_DIR}/vectorizer.joblib")
         os.system(f"gsutil cp metrics.json {MODEL_DIR}/metrics.json")
