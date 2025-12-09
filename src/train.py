@@ -6,7 +6,7 @@ import os
 import sys
 import subprocess
 from sklearn.model_selection import train_test_split
-from sklearn import svm  
+from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
