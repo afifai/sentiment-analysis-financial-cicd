@@ -19,7 +19,7 @@ try:
 except ImportError:
     HAS_STORAGE_LIB = False
     print("Warning: google-cloud-storage library not found.")
-
+    
 # --- KONFIGURASI ENV VERTEX AI ---
 # Vertex AI otomatis set AIP_MODEL_DIR ke gs://bucket/output_dir/model
 MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
@@ -124,7 +124,7 @@ def train_and_evaluate():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Model Pipeline + Model Selection
-    vectorizer = CountVectorizer(max_features=2000)
+    vectorizer = CountVectorizer(max_features=1000)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
 
