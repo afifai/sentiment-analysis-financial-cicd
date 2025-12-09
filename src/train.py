@@ -191,3 +191,7 @@ def train_and_evaluate():
 
 if __name__ == '__main__':
     train_and_evaluate()
+
+git add src/train.py
+git commit -m "feat: improve model architecture"
+git push origin feature/model-nama-anda
