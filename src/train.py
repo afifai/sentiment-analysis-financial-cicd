@@ -126,7 +126,7 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    model = LogisticRegression(penalty='elasticnet', solver='saga', l1_ratio=0.5, max_iter=200)
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
@@ -188,6 +188,8 @@ def train_and_evaluate():
         print(f"MODEL_DIR is local or empty: {MODEL_DIR}. Skipping GCS upload.")
     
     print("Training job finished successfully.")
+    print("Final Metrics and Inference Results:")
+    print(json.dumps(final_output, indent=2))
 
 if __name__ == '__main__':
     train_and_evaluate()
