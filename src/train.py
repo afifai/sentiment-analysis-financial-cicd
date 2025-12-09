@@ -7,7 +7,7 @@ import sys
 import subprocess
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, f1_score
 
 # Import Google Cloud Storage
@@ -126,7 +126,7 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    model = MultinomialNB()
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
