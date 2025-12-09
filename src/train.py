@@ -124,8 +124,7 @@ def train_and_evaluate():
     
     # Model Pipeline
 vectorizer = TfidfVectorizer(
-    max_features=8000,
-    ngram_range=(1, 2)
+    max_features=8000
 )
 
 
