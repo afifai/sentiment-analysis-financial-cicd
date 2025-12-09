@@ -126,7 +126,14 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegressionr(class_weight = 'balanced', solver = 'lbfgs', max_iter = 100)
+   
+    model = LogisticRegression(
+        max_iter=1000, 
+        C=0.1,                          # Kekuatan Regularisasi
+        solver='lbfgs',
+        class_weight='balanced'         # Penyeimbangan Bobot Kelas
+    )
+
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
