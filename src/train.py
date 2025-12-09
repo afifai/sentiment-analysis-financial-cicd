@@ -7,7 +7,7 @@ import sys
 import subprocess
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 
 # Import Google Cloud Storage
@@ -122,11 +122,11 @@ def train_and_evaluate():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Model Pipeline
-    vectorizer = CountVectorizer(max_features=2000)
+    vectorizer = CountVectorizer(max_features=1000,class_weight = 'balanced', penalty = 11, solver = 'lbfgs', max_iter = 100)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = RandomForestClassifier()
+    model = LogisticRegressionr()
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
