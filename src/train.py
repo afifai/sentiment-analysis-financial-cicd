@@ -11,6 +11,9 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.neural_network import MLPClassifier
+from sklearn.svm import LinearSVC
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 # Import Google Cloud Storage
 
@@ -129,7 +132,10 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = MLPClassifier(random_state=1, max_iter=300).fit(X_train_vec, y_train)
+    # model = MLPClassifier(random_state=1, max_iter=300).fit(X_train_vec, y_train)
+    model = make_pipeline(StandardScaler(),
+                    LinearSVC(random_state=0, tol=1e-5))
+    model.fit(X_train_vec, y_train)
     # model.predict_proba(X_test[:1])
     # model = LogisticRegression(penalty='elasticnet',solver='saga',l1_ratio=0.5)
     # model.fit(X_train_vec, y_train)
