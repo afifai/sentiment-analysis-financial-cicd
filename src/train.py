@@ -126,7 +126,12 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    model = LogisticRegression(solver="liblinear",   # robust for small/medium datasets
+    penalty="l2",         # standard regularization
+    C=1.0,                # inverse regularization strength
+    class_weight=None,    # or "balanced" if dataset is imbalanced
+    max_iter=1000,
+    random_state=42)
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
