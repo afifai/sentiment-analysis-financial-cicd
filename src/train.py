@@ -6,9 +6,10 @@ import os
 import sys
 import subprocess
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, f1_score
+
 
 # Import Google Cloud Storage
 try:
@@ -18,7 +19,7 @@ except ImportError:
     HAS_STORAGE_LIB = False
     print("Warning: google-cloud-storage library not found.")
 
-# --- KONFIGURASI ENV VERTEX AI ---
+# --- KONFIGURASI ENV VERTEX AI -
 # Vertex AI otomatis set AIP_MODEL_DIR ke gs://bucket/output_dir/model
 MODEL_DIR = os.getenv('AIP_MODEL_DIR', '.')
 DATA_FILE = 'sentiment-financial.csv'
@@ -122,11 +123,15 @@ def train_and_evaluate():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Model Pipeline
-    vectorizer = CountVectorizer(max_features=1000)
+vectorizer = TfidfVectorizer(
+    max_features=8000
+)
+
+
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    model = MultinomialNB()
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
@@ -136,7 +141,7 @@ def train_and_evaluate():
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
     
     metrics = {
-        "model_name": "LogisticRegression",
+        "model_name": "MultinomialNB",
         "parameters": str(model.get_params()),
         "accuracy": acc,
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
