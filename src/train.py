@@ -136,12 +136,12 @@ def train_and_evaluate():
     y_pred = model.predict(X_test_vec)
 
     acc = accuracy_score(y_test, y_pred)
-    labels = best_model.classes_
+    labels = model.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
 
     metrics = {
-        "model_name": best_model_name,
-        "parameters": str(best_model.get_params()),
+        "model_name": "learning",
+        "parameters": str(model.get_params()),
         "accuracy": acc,
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
     }
@@ -160,7 +160,7 @@ def train_and_evaluate():
     print("\nRunning Inference Checks...")
     for text, expected in test_sentences:
         vec_text = vectorizer.transform([text])
-        pred = best_model.predict(vec_text)[0]
+        pred = model.predict(vec_text)[0]
 
         inference_results.append({
             "text": text,
@@ -175,7 +175,6 @@ def train_and_evaluate():
     }
 
     # 6. Save Artifacts Local
-    model = best_model
     print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
     joblib.dump(vectorizer, 'vectorizer.joblib')
