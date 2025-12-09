@@ -126,7 +126,7 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression()
+    model = LogisticRegression(penalty='elasticnet')
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
