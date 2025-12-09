@@ -188,6 +188,8 @@ def train_and_evaluate():
         print(f"MODEL_DIR is local or empty: {MODEL_DIR}. Skipping GCS upload.")
     
     print("Training job finished successfully.")
+    print("Final Metrics and Inference Results:")
+    print(json.dumps(final_output, indent=2))
 
 if __name__ == '__main__':
     train_and_evaluate()
