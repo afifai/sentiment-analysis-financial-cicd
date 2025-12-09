@@ -129,7 +129,7 @@ def train_and_evaluate():
     X_test_vec = vectorizer.transform(X_test)
     
     model = svm.SVC()
-    model.fit(X_train, y_train)
+    model.fit(X_train_vec, y_train)
     # model.predict_proba(X_test[:1])
     # model = LogisticRegression(penalty='elasticnet',solver='saga',l1_ratio=0.5)
     # model.fit(X_train_vec, y_train)
