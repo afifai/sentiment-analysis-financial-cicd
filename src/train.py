@@ -134,7 +134,6 @@ def train_and_evaluate():
         class_weight='balanced'         # Penyeimbangan Bobot Kelas
     )
 
-
     model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
