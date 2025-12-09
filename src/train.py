@@ -130,7 +130,12 @@ def train_and_evaluate():
 
     # Daftar kandidat model yang mau dieksperimenkan
     candidate_models = {
-        "LogisticRegression": LogisticRegression(max_iter=1000),
+        "LogisticRegression": LogisticRegression(
+            max_iter=1000,
+            class_weight='balanced',
+            solver='lbfgs',
+            penalty='l2'
+    ),
         "LinearSVC": LinearSVC(),
         "MultinomialNB": MultinomialNB()
     }
