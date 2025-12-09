@@ -9,9 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.model_selection import GridSearchCV, StratifiedKFold
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
+
 # Import Google Cloud Storage
 try:
     from google.cloud import storage
@@ -123,53 +121,21 @@ def train_and_evaluate():
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # # Model Pipeline
-    # vectorizer = CountVectorizer(max_features=1000)
-    # X_train_vec = vectorizer.fit_transform(X_train)
-    # X_test_vec = vectorizer.transform(X_test)
+    # Model Pipeline
+    vectorizer = CountVectorizer(max_features=1000)
+    X_train_vec = vectorizer.fit_transform(X_train)
+    X_test_vec = vectorizer.transform(X_test)
     
-    # model = LogisticRegression()
-    # model.fit(X_train_vec, y_train)
-
-    pipeline = Pipeline([
-    ("vect", TfidfVectorizer()),
-    ("clf", LogisticRegression(solver="liblinear", max_iter=1000, random_state=42))
-])
-
-    # Hyperparameter grid to search
-    param_grid = {
-    "vect__ngram_range": [(1, 1), (1, 2)],
-    "vect__max_df": [0.9, 1.0],
-    "vect__min_df": [1, 2],
-    "vect__max_features": [1000, 5000],
-    "clf__C": [0.01, 0.1, 1.0, 10.0],
-    "clf__penalty": ["l2"],
-    "clf__class_weight": [None, "balanced"]
-}
-
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-    grid = GridSearchCV(
-        pipeline,
-        param_grid=param_grid,
-        scoring="f1_macro",
-        cv=cv,
-        n_jobs=-1,
-        verbose=2,
-        return_train_score=True
-    )
-
-    print("Starting GridSearchCV...")
-    grid.fit(X_train.tolist(), y_train.tolist())
-
-    print(f"Best score (cv): {grid.best_score_:.4f}")
-    print(f"Best params: {grid.best_params_}")
-
-    model = grid.best_estimator_
+    model = LogisticRegression(solver="liblinear",   # robust for small/medium datasets
+    penalty="l2",         # standard regularization
+    C=1.0,                # inverse regularization strength
+    class_weight=None,    # or "balanced" if dataset is imbalanced
+    max_iter=1000,
+    random_state=42)
+    model.fit(X_train_vec, y_train)
     
     # 4. Evaluasi
-    # y_pred = model.predict(X_test_vec)
-    y_pred = model.predict(X_test.tolist())
+    y_pred = model.predict(X_test_vec)
     acc = accuracy_score(y_test, y_pred)
     labels = model.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
@@ -193,9 +159,8 @@ def train_and_evaluate():
     inference_results = []
     print("\nRunning Inference Checks...")
     for text, expected in test_sentences:
-        # vec_text = vectorizer.transform([text])
-        pred = model.predict(text)[0]
-        # pred = model.predict(vec_text)[0]
+        vec_text = vectorizer.transform([text])
+        pred = model.predict(vec_text)[0]
         inference_results.append({
             "text": text,
             "expected": expected,
@@ -211,7 +176,7 @@ def train_and_evaluate():
     # 6. Save Artifacts Local
     print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
-    # joblib.dump(vectorizer, 'vectorizer.joblib')
+    joblib.dump(vectorizer, 'vectorizer.joblib')
     with open('metrics.json', 'w') as f:
         json.dump(final_output, f, indent=2)
         
