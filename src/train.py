@@ -7,12 +7,11 @@ import sys
 import subprocess
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.svm import LinearSVC
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import GridSearchCV
 
-# Import Google Cloud Storage (GCS)
+# Import Google Cloud Storage
 try:
     from google.cloud import storage
     HAS_STORAGE_LIB = True
@@ -123,50 +122,40 @@ def train_and_evaluate():
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Model Pipeline + Model Selection
+    # Model Pipeline
     vectorizer = CountVectorizer(max_features=1000)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
-
-    # Daftar kandidat model yang mau dieksperimenkan
-    candidate_models = {
-        "LogisticRegression": LogisticRegression(max_iter=1000),
-        "LinearSVC": LinearSVC(),
-        "MultinomialNB": MultinomialNB()
+    
+   
+    param_grid = {
+    'C': [0.01, 0.1, 1, 10],            # Kekuatan Regularisasi
+    'penalty': ['l1', 'l2'],            # Tipe Regularisasi
+    'solver': ['liblinear', 'saga'],    # Algoritma Optimasi
+    'max_iter': [100, 500]              # Iterasi Maksimum
     }
 
-    best_model = None
-    best_model_name = None
-    best_score = -1
-    best_y_pred = None
-
-    print("\n=== Model Selection (scoring: F1-macro) ===")
-    for name, clf in candidate_models.items():
-        print(f"Training {name}...")
-        clf.fit(X_train_vec, y_train)
-        preds = clf.predict(X_test_vec)
-        score = f1_score(y_test, preds, average="macro")
-        print(f"{name} F1-macro: {score:.4f}")
-
-        if score > best_score:
-            best_score = score
-            best_model = clf
-            best_model_name = name
-            best_y_pred = preds
-
-    # 4. Evaluasi model terbaik
-    y_pred = best_y_pred
+    grid_search = GridSearchCV(
+    estimator=model, 
+    param_grid=param_grid, 
+    cv=5, 
+    scoring='accuracy', # Ganti dengan metric yang sesuai (misalnya 'f1_weighted')
+    verbose=1, 
+    n_jobs=-1 # Menggunakan semua core CPU
+    )
+    
+    # 4. Evaluasi
+    y_pred = grid_search.predict(X_test_vec)
     acc = accuracy_score(y_test, y_pred)
-    labels = best_model.classes_
+    labels = grid_search.classes_
     f1_scores = f1_score(y_test, y_pred, average=None, labels=labels)
-
+    
     metrics = {
-        "model_name": best_model_name,
-        "parameters": str(best_model.get_params()),
+        "model_name": "LogisticRegression",
+        "parameters": str(model.get_params()),
         "accuracy": acc,
         "f1_scores": {label: score for label, score in zip(labels, f1_scores)}
     }
-
     
     # 5. Inference Checks
     test_sentences = [
@@ -181,8 +170,7 @@ def train_and_evaluate():
     print("\nRunning Inference Checks...")
     for text, expected in test_sentences:
         vec_text = vectorizer.transform([text])
-        pred = best_model.predict(vec_text)[0]
-
+        pred = model.predict(vec_text)[0]
         inference_results.append({
             "text": text,
             "expected": expected,
@@ -196,7 +184,6 @@ def train_and_evaluate():
     }
 
     # 6. Save Artifacts Local
-    model = best_model
     print(f"Saving artifacts locally...")
     joblib.dump(model, 'model.joblib')
     joblib.dump(vectorizer, 'vectorizer.joblib')
