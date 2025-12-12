@@ -200,4 +200,5 @@ def train_and_evaluate():
     print("Training job finished successfully.")
 
 if __name__ == '__main__':
+    print("Starting training job...")
     train_and_evaluate()
