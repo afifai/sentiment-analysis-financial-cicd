@@ -128,14 +128,7 @@ def train_and_evaluate():
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
-    model = LogisticRegression(
-        C=1.0,
-        penalty='12',
-        solver='liblinear',
-        max_iter=1000,
-        random_stae=42,
-        n_jobs=-1
-    )
+    model = LogisticRegression(solver='liblinear', multi_class='ovr', C=0.1)
     model.fit(X_train_vec, y_train)
 
 
