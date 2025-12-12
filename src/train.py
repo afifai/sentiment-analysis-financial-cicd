@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn import linear_model
 
 # Import Google Cloud Storage
 try:
