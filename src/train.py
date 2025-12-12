@@ -1,3 +1,5 @@
+from sklearn.ensemble import LogisticRegression
+from sklearn.model_selection import GridSearchCV
 import pandas as pd
 import numpy as np
 import joblib
@@ -7,7 +9,7 @@ import sys
 import subprocess
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn import linear_model
 
@@ -123,14 +125,13 @@ def train_and_evaluate():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Model Pipeline
-    vectorizer = CountVectorizer(max_features=1000)
+    vectorizer = CountVectorizer(max_features=2000)
     X_train_vec = vectorizer.fit_transform(X_train)
     X_test_vec = vectorizer.transform(X_test)
     
     #model = LogisticRegression()
     model = linear_model.Lasso(alpha=0.1)
     model.fit(X_train_vec, y_train)
-    
     
     # 4. Evaluasi
     y_pred = model.predict(X_test_vec)
